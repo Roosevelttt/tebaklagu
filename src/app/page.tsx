@@ -14,6 +14,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { slugify } from '@/lib/slugify';
 
 // --- Constants ---
 // const RECORDING_INTERVAL_MS = 10000;
@@ -33,14 +34,6 @@ interface SongResult {
   error?: string;
   spotifyId?: string | null;
 }
-
-const slugify = (str: string) =>
-  str
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '') // Remove non-word chars
-    .replace(/[\s_-]+/g, '-') // Replace space/underscore with hyphen
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
 
 export default function HomePage() {
   const { data: session } = useSession();

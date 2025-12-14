@@ -122,10 +122,10 @@ function normalizeTags(tags: LastFmTag[] | undefined): string[] {
 
 export async function GET(
   request: Request,
-  { params }: { params: { spotifyId: string } }
+  { params }: { params: Promise<{ spotifyId: string }> }
 ) {
   try {
-    const { spotifyId } = params;
+    const { spotifyId } = await params;
     
     // 1. GET SPOTIFY TRACK DATA
     const token = await getSpotifyToken();

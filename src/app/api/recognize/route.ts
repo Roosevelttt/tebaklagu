@@ -28,6 +28,10 @@ interface SongResult {
   spotifyId?: string | null;
   error?: string;
 }
+interface ACRCloudExternalIds {
+  isrc?: string;
+}
+
 interface ACRCloudMusicMetadata {
   title: string;
   artists: Array<{ name: string }>;
@@ -36,6 +40,7 @@ interface ACRCloudMusicMetadata {
   duration_ms?: number;
   label?: string;
   acr_id?: string;
+  external_ids?: ACRCloudExternalIds;
 }
 
 interface ACRCloudResponse {
@@ -50,6 +55,11 @@ interface ACRCloudResponse {
       artists: Array<{ name: string }>;
       album: { name: string };
       score?: string;
+      duration_ms?: number;
+      label?: string;
+      acrid?: string;
+      release_date?: string;
+      external_ids?: ACRCloudExternalIds;
     }>;
   };
   error?: string;
@@ -98,28 +108,37 @@ async function getSpotifyAccessToken(): Promise<string> {
   return data.access_token as string;
 }
 
-async function resolveSpotifyTrack(title: string, artist: string, token: string): Promise<SpotifyResolveResult> {
-  const q = `track:"${title}" artist:"${artist}"`;
-  const res = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1&market=ID`,
-    { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }
-  );
+async function resolveSpotifyTrack(title: string, artist: string, token: string, isrc?: string): Promise<SpotifyResolveResult> {
+  const searchSpotify = async (query: string): Promise<SpotifyResolveResult> => {
+    const res = await fetch(
+      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1&market=ID`,
+      { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' }
+    );
 
-  if (!res.ok) {
-    console.error("[Spotify] search error:", res.status);
+    if (!res.ok) {
+      console.error('[Spotify] search error:', res.status, query);
+      return { spotifyId: null, artistId: null };
+    }
+
+    const data: SpotifySearchResponse = await res.json();
+    if (data?.tracks?.items?.length > 0) {
+      const track = data.tracks.items[0];
+      return {
+        spotifyId: track.id,
+        artistId: track.artists?.[0]?.id ?? null,
+      };
+    }
     return { spotifyId: null, artistId: null };
+  };
+
+  if (isrc) {
+    const byIsrc = await searchSpotify(`isrc:${isrc}`);
+    if (byIsrc.spotifyId) {
+      return byIsrc;
+    }
   }
 
-  const data: SpotifySearchResponse = await res.json();
-  if (data?.tracks?.items?.length > 0) {
-    const track = data.tracks.items[0];
-    return {
-      spotifyId: track.id,
-      artistId: track.artists?.[0]?.id ?? null,
-    };
-  }
-
-  return { spotifyId: null, artistId: null };
+  return searchSpotify(`track:"${title}" artist:"${artist}"`);
 }
 
 // ================== MAIN HANDLER ==================
@@ -257,7 +276,7 @@ async function recognizeWithACRCloud(audioBuffer: Buffer, fileName: string): Pro
         // const album = music.album?.name || '';
 
         
-        const { spotifyId } = await resolveSpotifyTrack(title, artist, token);
+        const { spotifyId } = await resolveSpotifyTrack(title, artist, token, songData.external_ids?.isrc);
         console.log("[Recognize] SpotifyId:", spotifyId);
 
         return {
@@ -275,7 +294,7 @@ async function recognizeWithACRCloud(audioBuffer: Buffer, fileName: string): Pro
         const title = hummingData.title;
         const artist = hummingData.artists[0]?.name ?? '';
 
-        const { spotifyId } = await resolveSpotifyTrack(title, artist, token);
+        const { spotifyId } = await resolveSpotifyTrack(title, artist, token, hummingData.external_ids?.isrc);
 
         return {
           title: hummingData.title,

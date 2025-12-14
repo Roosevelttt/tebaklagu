@@ -8,14 +8,7 @@ import HistorySkeleton from '@/components/HistorySkeleton';
 import Toast from '@/components/Toast';
 import Link from 'next/link';
 import Image from 'next/image';
-
-const slugify = (str: string) =>
-  str
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+import { slugify } from '@/lib/slugify';
 
 interface HistoryItem {
   id: string;
