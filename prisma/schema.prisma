@@ -7,8 +7,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 // User model - stores user account information
@@ -82,6 +80,7 @@ model SearchHistory {
   coverUrl    String?  // Album cover image URL
   duration    Int?     // Duration in seconds
   label       String?  // Record label
+  spotifyId   String?
   
   // ACRCloud specific data (optional, for reference)
   acrCloudId  String?  // ACRCloud track ID

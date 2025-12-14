@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   getOptimalAudioConstraints,
   getSupportedAudioMimeType,
@@ -7,283 +7,474 @@ import {
   normalizeAudioVolume,
   VOLUME_BOOST,
   convertToWav,
-  canDecodeAudio
+  canDecodeAudio,
 } from '@/lib/audioUtils';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+import { slugify } from '@/lib/slugify';
 
+// --- Constants ---
+// const RECORDING_INTERVAL_MS = 10000;
 const RECOGNITION_TIMEOUT_MS = 30000;
+const VISUALIZER_CANVAS_SIZE = 200;
+const VISUALIZER_INNER_RADIUS = 55;
+const VISUALIZER_MAX_BAR_HEIGHT = 70;
+const VISUALIZER_BAR_WIDTH = 3;
+const VISUALIZER_FFT_SIZE = 256;
 
-interface Artist { name: string }
-interface Album { name: string }
-
+// --- Type Definitions ---
 interface SongResult {
   title: string;
-  artists: Artist[];
-  album: Album;
+  artists: { name: string }[];
+  album: { name: string };
   source?: 'music' | 'humming';
   error?: string;
-  spotifyId?: string;
-}
-
-interface Recommendation {
-  title: string;
-  artists: Artist[];
-  album: Album;
-  spotifyId: string;
-  preview_url: string | null;
-  spotifyUrl: string;
+  spotifyId?: string | null;
 }
 
 export default function HomePage() {
   const { data: session } = useSession();
   const [isRecording, setIsRecording] = useState(false);
   const [isRecognizing, setIsRecognizing] = useState(false);
-  const [isLoadingRecs, setIsLoadingRecs] = useState(false);
-  const [result, setResult] = useState<SongResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+
+  const router = useRouter();
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const resultRef = useRef<SongResult | null>(null);
+  const resultFoundRef = useRef<boolean>(false);
   const isRecognizingRef = useRef<boolean>(false);
 
-  useEffect(() => { resultRef.current = result; }, [result]);
-  useEffect(() => { isRecognizingRef.current = isRecognizing; }, [isRecognizing]);
-  useEffect(() => { checkAudioDecodingSupport(); }, []);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const visualizerDataArrayRef = useRef<Uint8Array | null>(null);
+  const rotationOffsetRef = useRef(0);
 
-  /* ================= LOGIC TIDAK DIUBAH ================= */
+  useEffect(() => {
+    isRecognizingRef.current = isRecognizing;
+  }, [isRecognizing]);
 
+  // Check audio codec support on mount (for debugging)
+  useEffect(() => {
+    checkAudioDecodingSupport();
+  }, []);
+
+  const drawVisualizer = useCallback(() => {
+    if (
+      !analyserRef.current ||
+      !visualizerDataArrayRef.current ||
+      !canvasRef.current
+    ) {
+      return;
+    }
+
+    const analyser = analyserRef.current;
+    const dataArray = visualizerDataArrayRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) return;
+
+    rotationOffsetRef.current += 0.001;
+
+    // Get frequency data
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    analyser.getByteFrequencyData(dataArray as any);
+
+    const bufferLength = analyser.frequencyBinCount;
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.lineWidth = VISUALIZER_BAR_WIDTH;
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < bufferLength; i++) {
+      const barHeight =
+        (dataArray[i] / 255) * VISUALIZER_MAX_BAR_HEIGHT;
+
+      if (barHeight < 0.1) {
+        continue;
+      }
+      
+      const angle =
+        (i / bufferLength) * Math.PI * 2 + rotationOffsetRef.current;
+
+      const x1 = centerX + Math.cos(angle) * VISUALIZER_INNER_RADIUS;
+      const y1 = centerY + Math.sin(angle) * VISUALIZER_INNER_RADIUS;
+      const x2 =
+        centerX + Math.cos(angle) * (VISUALIZER_INNER_RADIUS + barHeight);
+      const y2 =
+        centerY + Math.sin(angle) * (VISUALIZER_INNER_RADIUS + barHeight);
+
+      const barGradient = ctx.createLinearGradient(x1, y1, x2, y2);
+
+      barGradient.addColorStop(0.2, '#5003FF');
+      barGradient.addColorStop(0.4, '#D8C7FF');
+      barGradient.addColorStop(1, 'rgb(74, 82, 235, 0)');
+
+      ctx.strokeStyle = barGradient;
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    animationFrameRef.current = requestAnimationFrame(drawVisualizer);
+  }, []);
+
+  // --- Start Recording ---
   const handleStartRecording = async () => {
-    setResult(null);
-    resultRef.current = null;
     setError(null);
     setIsRecognizing(false);
     isRecognizingRef.current = false;
-    setRecommendations([]);
+    resultFoundRef.current = false;
 
     try {
+      // Use default audio constraints
       const audioConstraints = getOptimalAudioConstraints();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+      });
       streamRef.current = stream;
 
       let mimeType: string | undefined = 'audio/wav';
       if (!MediaRecorder.isTypeSupported('audio/wav')) {
         mimeType = getSupportedAudioMimeType();
       }
-
-      mediaRecorderRef.current = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const mediaRecorderOptions = mimeType ? { mimeType } : undefined;
+      mediaRecorderRef.current = new MediaRecorder(stream, mediaRecorderOptions);
 
       mediaRecorderRef.current.ondataavailable = async (event) => {
-        if (resultRef.current) return;
+        if (resultFoundRef.current) { // Check ref
+          return;
+        }
         if (event.data.size > 0) {
           let processedBlob = event.data;
+
           try {
             const canDecode = await canDecodeAudio(event.data);
-            processedBlob = canDecode
-              ? await normalizeAudioVolume(event.data, VOLUME_BOOST.MUSIC, false)
-              : await convertToWav(event.data);
-          } catch {
+            if (canDecode) {
+              processedBlob = await normalizeAudioVolume(
+                event.data,
+                VOLUME_BOOST.MUSIC,
+                false,
+              );
+            } else {
+              try {
+                processedBlob = await convertToWav(event.data);
+              } catch {
+                processedBlob = event.data;
+              }
+            }
+          } catch (processingError) {
+            console.warn(
+              'Audio processing failed, using original audio:',
+              processingError,
+            );
             processedBlob = event.data;
           }
-          if (!resultRef.current) recognizeSong(processedBlob);
+
+          if (!resultFoundRef.current) {
+            recognizeSong(processedBlob);
+          }
         }
       };
 
+      const AudioContextPolyfill = window.AudioContext || 
+        (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      
+      if (!AudioContextPolyfill) {
+        throw new Error('Web Audio API is not supported in this browser.');
+      }
+      
+      const audioContext = new AudioContextPolyfill();
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = VISUALIZER_FFT_SIZE;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      // Store refs
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+      sourceNodeRef.current = source;
+      visualizerDataArrayRef.current = dataArray;
+      rotationOffsetRef.current = Math.random() * Math.PI * 2;
+
       mediaRecorderRef.current.start(10000);
       setIsRecording(true);
+      animationFrameRef.current = requestAnimationFrame(drawVisualizer); // Start visualizer
 
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      // Clear timeout
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
       timeoutRef.current = setTimeout(() => {
-        if (result) return;
-        setError("Couldn't find a match. Try getting closer or humming clearly!");
+        if (resultFoundRef.current) {
+          return;
+        }
+
+        setError(
+          "Couldn't find a match. Try getting closer to the source or humming more clearly!",
+        );
         handleStopRecording();
       }, RECOGNITION_TIMEOUT_MS);
-
-    } catch {
-      setError("Microphone access denied.");
+    } catch (err) {
+      console.error('Error accessing microphone:', err);
+      setError(
+        'Microphone access denied. Please allow access in your browser settings.',
+      );
     }
   };
 
+  // --- Stop Recording ---
   const handleStopRecording = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    resultFoundRef.current = true;
+
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === 'recording'
+    ) {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+    }
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (sourceNodeRef.current) {
+      sourceNodeRef.current.disconnect();
+      sourceNodeRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    analyserRef.current = null;
+    visualizerDataArrayRef.current = null;
+
+    // Clear canvas
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+    }
+
     setIsRecording(false);
     setIsRecognizing(false);
   };
 
+  // --- Recognize Song via API ---
   const recognizeSong = async (audioBlob: Blob) => {
-    if (isRecognizingRef.current || resultRef.current) return;
+    if (isRecognizingRef.current || resultFoundRef.current) return;
+
     setIsRecognizing(true);
     isRecognizingRef.current = true;
-
     const formData = new FormData();
     formData.append('sample', audioBlob, 'recording.wav');
 
     try {
-      const response = await fetch('/api/recognize', { method: 'POST', body: formData });
-      if (response.status === 204) return;
+      const response = await fetch('/api/recognize', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.status === 204) {
+        setIsRecognizing(false);
+        isRecognizingRef.current = false;
+        return; // No result, keep listening
+      }
 
       const data: SongResult = await response.json();
-      if (response.ok && data.title) {
-        setResult(data);
-        resultRef.current = data;
+
+      if (response.ok && data.title && data.spotifyId) {
+        resultFoundRef.current = true; 
         handleStopRecording();
-        if (data.title && data.artists?.length) {
-          setIsLoadingRecs(true);
-          await fetchRecommendations(data.title, data.artists[0].name);
-        }
+
+        const slug = slugify(data.title);
+        const artists = data.artists.map((a) => a.name).join(', ');
+
+        // 1. Store transition data in sessionStorage
+        sessionStorage.setItem(
+          'transitionData',
+          JSON.stringify({ title: data.title, artists })
+        );
+
+        // 2. Redirect immediately
+        router.push(`/song/${data.spotifyId}/${slug}`);
+      } else if (response.ok && data.error) {
+        resultFoundRef.current = true;
+        setError(data.error);
+        handleStopRecording();
+      } else {
+        console.log('No result in this chunk, waiting for the next one...');
       }
-    } catch {
-      setError('Recognition failed.');
+    } catch (err) {
+      console.error('Recognition error:', err);
+      if (!resultFoundRef.current) {
+        setError('An error occurred during recognition.');
+      }
       handleStopRecording();
     } finally {
-      setIsRecognizing(false);
-      isRecognizingRef.current = false;
-      setIsLoadingRecs(false);
+      // Only set to false if we haven't found a result
+      if (!resultFoundRef.current) {
+        setIsRecognizing(false);
+        isRecognizingRef.current = false;
+      }
     }
   };
 
-  const fetchRecommendations = async (title: string, artistName: string) => {
-    try {
-      const qs = new URLSearchParams({ track: title, artist: artistName });
-      const res = await fetch(`/api/similarity?${qs}`);
-      const recs: Recommendation[] = await res.json();
-      if (res.ok) setRecommendations(recs);
-    } catch {}
-  };
+  // const getStatusText = () => {
+  //   if (error) return '';
+  //   if (isRecording) {
+  //     if (isRecognizing) return 'Analyzing...';
+  //     return 'Listening... Play music or hum a tune!';
+  //   }
+  //   return 'Ready to listen';
+  // };
 
-  const getStatusText = () => {
-    if (error) return '';
-    if (isRecording) return isRecognizing ? 'Analyzing…' : 'Listening…';
-    if (result) return 'Result found!';
-    return 'Tap to start listening';
-  };
-
-  /* ================= UI ================= */
-
+  const buttonColor = error ? '#EF4444' : '#5003FF';
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex flex-col items-center justify-center pt-32 px-6 text-center">
+      <main className="flex min-h-screen flex-col items-center justify-center p-24 text-center bg-black pt-32 overflow-hidden">
+        <div className="w-full flex justify-center">
+          <Link
+            href="/"
+            className={`flex items-center gap-4 text-5xl font-bold mb-4 transition-all duration-500 ease-in-out -translate-x-4 md:-translate-x-3 ${
+              isRecording
+                ? 'opacity-0 -translate-y-4'
+                : 'opacity-100 translate-y-0'
+            }`}
+          >
+            <Image
+              src="/svg/tebaklagu-default.svg"
+              alt="TebakLagu Logo"
+              width={36}
+              height={36}
+              priority
+            />
 
-        <h1 className="text-5xl font-black text-white mb-4">
-          Find a Song
-        </h1>
+            <span className="flex items-center font-germagont font-regular">
+              <span style={{ color: "#fff1ff" }}>tebak</span>
+              <span style={{ color: "#D1F577" }}>lagu</span>
+            </span>
+          </Link>
+        </div>
 
-        <p className={`text-lg text-gray-300 mb-12 ${isRecording && 'animate-pulse'}`}>
-          {getStatusText()}
+        <p
+          className={`text-lg mb-12 transition-all duration-500 ease-in-out ${
+            isRecording
+              ? 'opacity-0 -translate-y-4'
+              : 'opacity-100 translate-y-0' 
+          }`}
+          style={{ color: '#EEECFF' }}
+        >
+          {!error && 'Ready to listen'}
         </p>
 
-        {/* RECORD BUTTON */}
-        <div className="relative mb-10">
+        <div
+          className={`relative flex items-center justify-center mb-8 transition-all duration-500 ease-in-out ${
+            isRecording
+              ? 'scale-125 -translate-y-20'
+              : 'scale-100 translate-y-0'
+          }`}
+        >
           {isRecording && !error && (
-            <>
-              <div className="absolute inset-0 rounded-full animate-ping bg-blue-500/30" />
-              <div className="absolute inset-[-20px] rounded-full animate-ping bg-purple-500/20 delay-200" />
-            </>
+            <canvas
+              ref={canvasRef}
+              width={VISUALIZER_CANVAS_SIZE}
+              height={VISUALIZER_CANVAS_SIZE}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+            />
           )}
 
           <button
             onClick={isRecording ? handleStopRecording : handleStartRecording}
-            className={`relative w-24 h-24 rounded-full flex items-center justify-center
-                        bg-gradient-to-br from-blue-500 to-purple-600
-                        hover:scale-105 transition shadow-2xl`}
+            className="relative w-24 h-24 rounded-full font-bold text-white shadow-2xl transition-all duration-300 hover:scale-105 z-10 flex items-center justify-center focus:outline-none"
+            style={{ backgroundColor: buttonColor }}
+            disabled={isRecognizing} // Disable button while recognizing
           >
             {isRecording ? (
-              <div className="w-6 h-6 bg-white rounded-sm" />
+              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <rect x="6" y="6" width="8" height="8" />
+              </svg>
             ) : (
-              <svg
-                className="w-10 h-10 text-white"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z" />
-                <path d="M19 11a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 10-2 0 7 7 0 006 6.92V21a1 1 0 102 0v-3.08A7 7 0 0019 11z" />
+              <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a3 3 0 016 0v2a3 3 0 11-6 0V9z"
+                  clipRule="evenodd"
+                />
               </svg>
             )}
           </button>
         </div>
 
-        {/* RESULT CARD */}
-        {result && (
-          <div className="w-full max-w-md backdrop-blur-xl bg-black/40 border border-blue-500/20 rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-2xl font-bold text-white">{result.title}</h2>
-            <p className="text-gray-300">
-              {result.artists.map(a => a.name).join(', ')}
-            </p>
-            <p className="text-gray-400 text-sm">
-              Album: {result.album.name}
-            </p>
-            {session && (
-              <p className="text-blue-400 mt-3 text-sm font-semibold">
-                ✓ Saved to your history
-              </p>
-            )}
-          </div>
-        )}
+        <p
+          className={`text-lg mt-4 transition-all duration-500 ease-in-out ${
+            isRecording && !isRecognizing && 'animate-pulse'
+          } ${
+            isRecording
+              ? 'opacity-100 translate-y-0'
+              : 'opacity-0 translate-y-4'
+          }`}
+          style={{ color: '#EEECFF', minHeight: '1.75rem' }} 
+        >
+          {isRecording &&
+            !error &&
+            (isRecognizing
+              ? 'Analyzing...'
+              : 'Listening... Play music or hum a tune!')}
+        </p>
 
-        {/* RECOMMENDATIONS */}
-        {(isLoadingRecs || recommendations.length > 0) && (
-          <div className="mt-10 w-full max-w-3xl">
-            <h3 className="text-xl font-bold text-white mb-4">
-              {isLoadingRecs ? 'Finding recommendations…' : 'You may also like'}
-            </h3>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              {recommendations.map(rec => (
-                <div
-                  key={rec.spotifyId}
-                  className="backdrop-blur-xl bg-black/40 border border-gray-700 rounded-xl p-4 text-left"
-                >
-                  <h4 className="text-white font-semibold">{rec.title}</h4>
-                  <p className="text-gray-300 text-sm">
-                    {rec.artists.map(a => a.name).join(', ')}
-                  </p>
-                  <p className="text-gray-400 text-xs">
-                    Album: {rec.album.name}
-                  </p>
-
-                  <a
-                    href={rec.spotifyUrl}
-                    target="_blank"
-                    className="text-green-400 underline mt-2 inline-block text-sm"
-                  >
-                    Open in Spotify
-                  </a>
-
-                  {rec.preview_url && (
-                    <audio controls className="w-full mt-2" src={rec.preview_url} />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ERROR */}
         {error && (
-          <p className="mt-6 text-red-400 font-semibold">
+          <p className="mt-4 text-lg font-medium" style={{ color: '#EF4444' }}>
             {error}
           </p>
         )}
 
-        {/* LOGIN PROMPT */}
-        {!session && !result && (
-          <div className="mt-10 backdrop-blur-xl bg-black/40 p-4 rounded-xl border border-gray-700">
-            <p className="text-gray-300 text-sm">
-              <Link href="/login" className="text-blue-400 font-semibold hover:underline">
+        {!session && !isRecording && !error && (
+          <div
+            className="mt-8 p-4 rounded-lg"
+            style={{ backgroundColor: '#1F1F1F' }}
+          >
+            <p className="text-sm" style={{ color: '#EEECFF' }}>
+              <Link
+                href="/login"
+                className="font-semibold hover:underline"
+                style={{ color: '#D1F577' }}
+              >
                 Sign in
               </Link>{' '}
-              to save your history
+              to save your search history
             </p>
           </div>
         )}
-
       </main>
     </>
   );
