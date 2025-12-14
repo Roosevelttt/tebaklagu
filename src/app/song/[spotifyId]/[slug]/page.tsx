@@ -48,6 +48,108 @@ interface TransitionData {
 
 type SortOption = 'vibe' | 'playcount' | 'similarity';
 
+interface FilterControlsProps {
+  sortBy: SortOption;
+  minPlaycount: number;
+  minSimilarity: number;
+  selectedTags: string[];
+  allTags: string[];
+  onSortChange: (event: ChangeEvent<HTMLSelectElement>) => void;
+  onPlaycountChange: (value: number) => void;
+  onSimilarityChange: (value: number) => void;
+  onToggleTag: (tag: string) => void;
+  onReset: () => void;
+}
+
+function FilterControls({
+  sortBy,
+  minPlaycount,
+  minSimilarity,
+  selectedTags,
+  allTags,
+  onSortChange,
+  onPlaycountChange,
+  onSimilarityChange,
+  onToggleTag,
+  onReset,
+}: FilterControlsProps) {
+  return (
+    <div className="p-6 rounded-lg" style={{ backgroundColor: '#1F1F1F', border: '1px solid #333' }}>
+      <h3 className="text-xl font-bold mb-6 text-white border-b border-gray-700 pb-2">Filter & Sort</h3>
+
+      <div className="mb-6">
+        <label className="block text-sm text-gray-400 mb-2">Sort by</label>
+        <select
+          value={sortBy}
+          onChange={onSortChange}
+          className="w-full bg-black text-white p-2 rounded border border-gray-700 focus:border-[#D1F577] outline-none"
+        >
+          <option value="vibe">Vibe Score (Best Match)</option>
+          <option value="similarity">Similarity (%)</option>
+          <option value="playcount">Popularity</option>
+        </select>
+      </div>
+
+      <div className="mb-6">
+        <div className="flex justify-between text-sm mb-1">
+          <label className="text-gray-400">Min Playcount</label>
+          <span className="text-[#D1F577]">{new Intl.NumberFormat('en-US', { notation: 'compact' }).format(minPlaycount)}</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="5000000"
+          step="100000"
+          value={minPlaycount}
+          onChange={(e) => onPlaycountChange(Number(e.target.value))}
+          className="w-full accent-[#D1F577] h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+        />
+      </div>
+
+      <div className="mb-6">
+        <div className="flex justify-between text-sm mb-1">
+          <label className="text-gray-400">Min Similarity</label>
+          <span className="text-[#D1F577]">{minSimilarity}%</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          value={minSimilarity}
+          onChange={(e) => onSimilarityChange(Number(e.target.value))}
+          className="w-full accent-[#D1F577] h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+        />
+      </div>
+
+      <div className="mb-6">
+        <label className="block text-sm text-gray-400 mb-2">Filter Tags</label>
+        <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto scrollbar-thin pr-1">
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => onToggleTag(tag)}
+              className={`text-[11px] px-3 py-1 rounded-full border transition-all ${
+                selectedTags.includes(tag)
+                  ? 'bg-[#D1F577] text-black border-[#D1F577] font-bold'
+                  : 'bg-transparent text-gray-300 border-gray-600 hover:border-gray-400'
+              }`}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <button
+        onClick={onReset}
+        className="w-full py-2 rounded border border-gray-600 text-gray-300 hover:bg-gray-800 transition font-medium"
+      >
+        Reset filters
+      </button>
+    </div>
+  );
+}
+
 // --- COMPONENTS ---
 
 function SongResultCard({ track }: { track: SpotifyTrack }) {
@@ -56,16 +158,6 @@ function SongResultCard({ track }: { track: SpotifyTrack }) {
   return (
     <div className="p-6 rounded-lg text-left w-full shadow-xl mb-8 border border-[#333]" style={{ backgroundColor: '#1F1F1F' }}>
       <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
-        {image && (
-          <Image
-            src={image.url}
-            alt={track.name}
-            className="w-48 h-48 rounded-lg object-cover shadow-lg"
-            width={image.width}
-            height={image.height}
-            priority
-          />
-        )}
         <div className="flex-1 w-full text-center md:text-left">
           <h2 className="text-3xl font-bold mb-2" style={{ color: '#D1F577' }}>{track.name}</h2>
           <p className="text-xl mb-1 text-white">by {track.artists.map((a) => a.name).join(', ')}</p>
@@ -182,6 +274,7 @@ export default function SongPage() {
   const [minPlaycount, setMinPlaycount] = useState(0);
   const [minSimilarity, setMinSimilarity] = useState(0);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   // 1. FETCH
   useEffect(() => {
@@ -305,7 +398,36 @@ export default function SongPage() {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-                
+
+                <div className="lg:hidden">
+                  <button
+                    onClick={() => setIsFiltersOpen((prev) => !prev)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded border border-[#333] text-white text-sm font-medium bg-[#1F1F1F]"
+                  >
+                    Filters & Sort
+                    <span className="text-[#D1F577]">{isFiltersOpen ? 'Hide' : 'Show'}</span>
+                  </button>
+                  {isFiltersOpen && (
+                    <div className="mt-4">
+                      <FilterControls
+                        sortBy={sortBy}
+                        minPlaycount={minPlaycount}
+                        minSimilarity={minSimilarity}
+                        selectedTags={selectedTags}
+                        allTags={allTags}
+                        onSortChange={handleSortChange}
+                        onPlaycountChange={setMinPlaycount}
+                        onSimilarityChange={setMinSimilarity}
+                        onToggleTag={toggleTag}
+                        onReset={() => {
+                          resetFilters();
+                          setIsFiltersOpen(false);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {/* LEFT: RESULTS */}
                 <div className="lg:col-span-2 order-2 lg:order-1">
                   <div className="flex justify-between items-baseline mb-4">
@@ -332,80 +454,19 @@ export default function SongPage() {
                 </div>
 
                 {/* RIGHT: SIDEBAR */}
-                <div className="lg:col-span-1 order-1 lg:order-2 sticky top-28">
-                  <div className="p-6 rounded-lg" style={{ backgroundColor: '#1F1F1F', border: '1px solid #333' }}>
-                    <h3 className="text-xl font-bold mb-6 text-white border-b border-gray-700 pb-2">Filter & Sort</h3>
-                    
-                    <div className="mb-6">
-                      <label className="block text-sm text-gray-400 mb-2">Sort by</label>
-                      <select 
-                        value={sortBy}
-                        onChange={handleSortChange}
-                        className="w-full bg-black text-white p-2 rounded border border-gray-700 focus:border-[#D1F577] outline-none"
-                      >
-                        <option value="vibe">Vibe Score (Best Match)</option>
-                        <option value="similarity">Similarity (%)</option>
-                        <option value="playcount">Popularity</option>
-                      </select>
-                    </div>
-
-                    <div className="mb-6">
-                      <div className="flex justify-between text-sm mb-1">
-                        <label className="text-gray-400">Min Playcount</label>
-                        <span className="text-[#D1F577]">{new Intl.NumberFormat('en-US', { notation: "compact" }).format(minPlaycount)}</span>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="5000000" 
-                        step="100000"
-                        value={minPlaycount}
-                        onChange={(e) => setMinPlaycount(Number(e.target.value))}
-                        className="w-full accent-[#D1F577] h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="mb-6">
-                      <div className="flex justify-between text-sm mb-1">
-                        <label className="text-gray-400">Min Similarity</label>
-                        <span className="text-[#D1F577]">{minSimilarity}%</span>
-                      </div>
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
-                        value={minSimilarity}
-                        onChange={(e) => setMinSimilarity(Number(e.target.value))}
-                        className="w-full accent-[#D1F577] h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="mb-6">
-                      <label className="block text-sm text-gray-400 mb-2">Filter Tags</label>
-                      <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto scrollbar-thin pr-1">
-                        {allTags.map(tag => (
-                          <button
-                            key={tag}
-                            onClick={() => toggleTag(tag)}
-                            className={`text-[11px] px-3 py-1 rounded-full border transition-all ${
-                              selectedTags.includes(tag)
-                                ? 'bg-[#D1F577] text-black border-[#D1F577] font-bold'
-                                : 'bg-transparent text-gray-300 border-gray-600 hover:border-gray-400'
-                            }`}
-                          >
-                            {tag}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button 
-                      onClick={resetFilters}
-                      className="w-full py-2 rounded border border-gray-600 text-gray-300 hover:bg-gray-800 transition font-medium"
-                    >
-                      Reset filters
-                    </button>
-                  </div>
+                <div className="lg:col-span-1 order-1 lg:order-2 sticky top-28 hidden lg:block">
+                  <FilterControls
+                    sortBy={sortBy}
+                    minPlaycount={minPlaycount}
+                    minSimilarity={minSimilarity}
+                    selectedTags={selectedTags}
+                    allTags={allTags}
+                    onSortChange={handleSortChange}
+                    onPlaycountChange={setMinPlaycount}
+                    onSimilarityChange={setMinSimilarity}
+                    onToggleTag={toggleTag}
+                    onReset={resetFilters}
+                  />
                 </div>
 
               </div>
