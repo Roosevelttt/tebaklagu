@@ -84,7 +84,6 @@ export default function HomePage() {
 
     rotationOffsetRef.current += 0.001;
 
-    // Get frequency data
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     analyser.getByteFrequencyData(dataArray as any);
 
@@ -101,10 +100,8 @@ export default function HomePage() {
       const barHeight =
         (dataArray[i] / 255) * VISUALIZER_MAX_BAR_HEIGHT;
 
-      if (barHeight < 0.1) {
-        continue;
-      }
-      
+      if (barHeight < 0.1) continue;
+
       const angle =
         (i / bufferLength) * Math.PI * 2 + rotationOffsetRef.current;
 
@@ -116,10 +113,9 @@ export default function HomePage() {
         centerY + Math.sin(angle) * (VISUALIZER_INNER_RADIUS + barHeight);
 
       const barGradient = ctx.createLinearGradient(x1, y1, x2, y2);
-
-      barGradient.addColorStop(0.2, '#5003FF');
-      barGradient.addColorStop(0.4, '#D8C7FF');
-      barGradient.addColorStop(1, 'rgb(74, 82, 235, 0)');
+      barGradient.addColorStop(0, '#3B82F6');
+      barGradient.addColorStop(0.6, '#8B5CF6');
+      barGradient.addColorStop(1, 'rgba(139,92,246,0)');
 
       ctx.strokeStyle = barGradient;
 
@@ -140,7 +136,6 @@ export default function HomePage() {
     resultFoundRef.current = false;
 
     try {
-      // Use default audio constraints
       const audioConstraints = getOptimalAudioConstraints();
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
@@ -151,195 +146,106 @@ export default function HomePage() {
       if (!MediaRecorder.isTypeSupported('audio/wav')) {
         mimeType = getSupportedAudioMimeType();
       }
-      const mediaRecorderOptions = mimeType ? { mimeType } : undefined;
-      mediaRecorderRef.current = new MediaRecorder(stream, mediaRecorderOptions);
+
+      mediaRecorderRef.current = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined
+      );
 
       mediaRecorderRef.current.ondataavailable = async (event) => {
-        if (resultFoundRef.current) { // Check ref
-          return;
-        }
+        if (resultFoundRef.current) return;
         if (event.data.size > 0) {
           let processedBlob = event.data;
-
           try {
             const canDecode = await canDecodeAudio(event.data);
-            if (canDecode) {
-              processedBlob = await normalizeAudioVolume(
-                event.data,
-                VOLUME_BOOST.MUSIC,
-                false,
-              );
-            } else {
-              try {
-                processedBlob = await convertToWav(event.data);
-              } catch {
-                processedBlob = event.data;
-              }
-            }
-          } catch (processingError) {
-            console.warn(
-              'Audio processing failed, using original audio:',
-              processingError,
-            );
+            processedBlob = canDecode
+              ? await normalizeAudioVolume(event.data, VOLUME_BOOST.MUSIC, false)
+              : await convertToWav(event.data);
+          } catch {
             processedBlob = event.data;
           }
-
-          if (!resultFoundRef.current) {
-            recognizeSong(processedBlob);
-          }
+          if (!resultFoundRef.current) recognizeSong(processedBlob);
         }
       };
 
-      const AudioContextPolyfill = window.AudioContext || 
+      const AudioContextPolyfill =
+        window.AudioContext ||
         (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      
-      if (!AudioContextPolyfill) {
-        throw new Error('Web Audio API is not supported in this browser.');
-      }
-      
+
       const audioContext = new AudioContextPolyfill();
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = VISUALIZER_FFT_SIZE;
 
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-
       const source = audioContext.createMediaStreamSource(stream);
       source.connect(analyser);
 
-      // Store refs
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
       sourceNodeRef.current = source;
-      visualizerDataArrayRef.current = dataArray;
-      rotationOffsetRef.current = Math.random() * Math.PI * 2;
+      visualizerDataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
 
       mediaRecorderRef.current.start(10000);
       setIsRecording(true);
-      animationFrameRef.current = requestAnimationFrame(drawVisualizer); // Start visualizer
-
-      // Clear timeout
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      animationFrameRef.current = requestAnimationFrame(drawVisualizer);
 
       timeoutRef.current = setTimeout(() => {
-        if (resultFoundRef.current) {
-          return;
-        }
-
-        setError(
-          "Couldn't find a match. Try getting closer to the source or humming more clearly!",
-        );
+        if (resultFoundRef.current) return;
+        setError("Couldn't find a match. Try again!");
         handleStopRecording();
       }, RECOGNITION_TIMEOUT_MS);
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      setError(
-        'Microphone access denied. Please allow access in your browser settings.',
-      );
+
+    } catch {
+      setError('Microphone access denied.');
     }
   };
 
   // --- Stop Recording ---
   const handleStopRecording = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     resultFoundRef.current = true;
 
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state === 'recording'
-    ) {
-      mediaRecorderRef.current.stop();
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-    }
-
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    if (sourceNodeRef.current) {
-      sourceNodeRef.current.disconnect();
-      sourceNodeRef.current = null;
-    }
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-    analyserRef.current = null;
-    visualizerDataArrayRef.current = null;
-
-    // Clear canvas
-    if (canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      }
-    }
+    mediaRecorderRef.current?.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    audioContextRef.current?.close();
 
     setIsRecording(false);
     setIsRecognizing(false);
   };
 
-  // --- Recognize Song via API ---
+  // --- Recognize Song ---
   const recognizeSong = async (audioBlob: Blob) => {
     if (isRecognizingRef.current || resultFoundRef.current) return;
 
     setIsRecognizing(true);
     isRecognizingRef.current = true;
+
     const formData = new FormData();
     formData.append('sample', audioBlob, 'recording.wav');
 
     try {
-      const response = await fetch('/api/recognize', {
-        method: 'POST',
-        body: formData,
-      });
+      const res = await fetch('/api/recognize', { method: 'POST', body: formData });
+      if (res.status === 204) return;
 
-      if (response.status === 204) {
-        setIsRecognizing(false);
-        isRecognizingRef.current = false;
-        return; // No result, keep listening
-      }
+      const data: SongResult = await res.json();
 
-      const data: SongResult = await response.json();
-
-      if (response.ok && data.title && data.spotifyId) {
-        resultFoundRef.current = true; 
+      if (res.ok && data.title && data.spotifyId) {
+        resultFoundRef.current = true;
         handleStopRecording();
 
-        const slug = slugify(data.title);
-        const artists = data.artists.map((a) => a.name).join(', ');
-
-        // 1. Store transition data in sessionStorage
         sessionStorage.setItem(
           'transitionData',
-          JSON.stringify({ title: data.title, artists })
+          JSON.stringify({
+            title: data.title,
+            artists: data.artists.map(a => a.name).join(', ')
+          })
         );
 
-        // 2. Redirect immediately
-        router.push(`/song/${data.spotifyId}/${slug}`);
-      } else if (response.ok && data.error) {
-        resultFoundRef.current = true;
-        setError(data.error);
-        handleStopRecording();
-      } else {
-        console.log('No result in this chunk, waiting for the next one...');
+        router.push(`/song/${data.spotifyId}/${slugify(data.title)}`);
       }
-    } catch (err) {
-      console.error('Recognition error:', err);
-      if (!resultFoundRef.current) {
-        setError('An error occurred during recognition.');
-      }
+    } catch {
+      setError('Recognition failed.');
       handleStopRecording();
     } finally {
-      // Only set to false if we haven't found a result
       if (!resultFoundRef.current) {
         setIsRecognizing(false);
         isRecognizingRef.current = false;
@@ -347,134 +253,86 @@ export default function HomePage() {
     }
   };
 
-  // const getStatusText = () => {
-  //   if (error) return '';
-  //   if (isRecording) {
-  //     if (isRecognizing) return 'Analyzing...';
-  //     return 'Listening... Play music or hum a tune!';
-  //   }
-  //   return 'Ready to listen';
-  // };
-
-  const buttonColor = error ? '#EF4444' : '#5003FF';
   return (
     <>
       <Header />
-      <main className="flex min-h-screen flex-col items-center justify-center p-24 text-center bg-black pt-32 overflow-hidden">
-        <div className="w-full flex justify-center">
-          <Link
-            href="/"
-            className={`flex items-center gap-4 text-5xl font-bold mb-4 transition-all duration-500 ease-in-out -translate-x-4 md:-translate-x-3 ${
-              isRecording
-                ? 'opacity-0 -translate-y-4'
-                : 'opacity-100 translate-y-0'
-            }`}
-          >
+      <main className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex flex-col items-center justify-center pt-32 px-6 text-center">
+
+        {/* LOGO */}
+        <div className="flex justify-center -mt-6 mb-8">
+          <Link href="/" className="flex items-center gap-4">
             <Image
               src="/svg/tebaklagu-default.svg"
-              alt="TebakLagu Logo"
-              width={36}
-              height={36}
+              alt="logo"
+              width={44}
+              height={44}
               priority
             />
-
-            <span className="flex items-center font-germagont font-regular">
-              <span style={{ color: "#fff1ff" }}>tebak</span>
-              <span style={{ color: "#D1F577" }}>lagu</span>
+            <span className="text-5xl font-black text-white">
+              <span className="text-white">tebak</span>
+              <span className="text-lime-400">lagu</span>
             </span>
           </Link>
         </div>
 
-        <p
-          className={`text-lg mb-12 transition-all duration-500 ease-in-out ${
-            isRecording
-              ? 'opacity-0 -translate-y-4'
-              : 'opacity-100 translate-y-0' 
-          }`}
-          style={{ color: '#EEECFF' }}
-        >
-          {!error && 'Ready to listen'}
+        {/* DIVIDER */}
+        {/* <div className="w-24 h-[2px] bg-gradient-to-r from-blue-500 to-purple-500 mb-8" /> */}
+
+        <p className="text-lg text-gray-300 mb-10">
+          {!error && 'Tap to start listening'}
         </p>
 
-        <div
-          className={`relative flex items-center justify-center mb-8 transition-all duration-500 ease-in-out ${
-            isRecording
-              ? 'scale-125 -translate-y-20'
-              : 'scale-100 translate-y-0'
-          }`}
-        >
-          {isRecording && !error && (
+        {/* RECORD BUTTON */}
+        <div className="relative mb-6">
+          {isRecording && (
+            <>
+              <div className="absolute inset-0 rounded-full animate-ping bg-blue-500/30" />
+              <div className="absolute inset-[-20px] rounded-full animate-ping bg-purple-500/20 delay-200" />
+            </>
+          )}
+
+          {isRecording && (
             <canvas
               ref={canvasRef}
               width={VISUALIZER_CANVAS_SIZE}
               height={VISUALIZER_CANVAS_SIZE}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+              className="absolute inset-0"
             />
           )}
 
           <button
             onClick={isRecording ? handleStopRecording : handleStartRecording}
-            className="relative w-24 h-24 rounded-full font-bold text-white shadow-2xl transition-all duration-300 hover:scale-105 z-10 flex items-center justify-center focus:outline-none"
-            style={{ backgroundColor: buttonColor }}
-            disabled={isRecognizing} // Disable button while recognizing
+            className="relative w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl hover:scale-105 transition"
+            disabled={isRecognizing}
           >
             {isRecording ? (
-              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
-                <rect x="6" y="6" width="8" height="8" />
-              </svg>
+              <div className="w-6 h-6 bg-white rounded-sm" />
             ) : (
-              <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a3 3 0 016 0v2a3 3 0 11-6 0V9z"
-                  clipRule="evenodd"
-                />
+              <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z" />
+                <path d="M19 11a1 1 0 10-2 0 5 5 0 01-10 0 1 1 0 10-2 0 7 7 0 006 6.92V21a1 1 0 102 0v-3.08A7 7 0 0019 11z" />
               </svg>
             )}
           </button>
         </div>
 
-        <p
-          className={`text-lg mt-4 transition-all duration-500 ease-in-out ${
-            isRecording && !isRecognizing && 'animate-pulse'
-          } ${
-            isRecording
-              ? 'opacity-100 translate-y-0'
-              : 'opacity-0 translate-y-4'
-          }`}
-          style={{ color: '#EEECFF', minHeight: '1.75rem' }} 
-        >
-          {isRecording &&
-            !error &&
-            (isRecognizing
-              ? 'Analyzing...'
-              : 'Listening... Play music or hum a tune!')}
-        </p>
-
         {error && (
-          <p className="mt-4 text-lg font-medium" style={{ color: '#EF4444' }}>
+          <p className="text-red-400 font-semibold mt-4">
             {error}
           </p>
         )}
 
-        {!session && !isRecording && !error && (
-          <div
-            className="mt-8 p-4 rounded-lg"
-            style={{ backgroundColor: '#1F1F1F' }}
-          >
-            <p className="text-sm" style={{ color: '#EEECFF' }}>
-              <Link
-                href="/login"
-                className="font-semibold hover:underline"
-                style={{ color: '#D1F577' }}
-              >
+        {!session && !error && !isRecording && (
+          <div className="mt-8 backdrop-blur-xl bg-black/40 border border-gray-700 rounded-xl p-4">
+            <p className="text-gray-300 text-sm">
+              <Link href="/login" className="text-blue-400 font-semibold hover:underline">
                 Sign in
               </Link>{' '}
-              to save your search history
+              to save your history
             </p>
           </div>
         )}
+
       </main>
     </>
   );
