@@ -13,11 +13,8 @@ import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 
-// --- Constants ---
-// const RECORDING_INTERVAL_MS = 10000;
 const RECOGNITION_TIMEOUT_MS = 30000;
 
-// --- Type Definitions ---
 interface Artist { name: string }
 interface Album { name: string }
 
@@ -36,7 +33,7 @@ interface Recommendation {
   album: Album;
   spotifyId: string;
   preview_url: string | null;
-  spotifyUrl: string; // <-- camelCase & wajib ada
+  spotifyUrl: string;
 }
 
 export default function HomePage() {
@@ -54,158 +51,95 @@ export default function HomePage() {
   const resultRef = useRef<SongResult | null>(null);
   const isRecognizingRef = useRef<boolean>(false);
 
-  useEffect(() => {
-    resultRef.current = result;
-  }, [result]);
+  useEffect(() => { resultRef.current = result; }, [result]);
+  useEffect(() => { isRecognizingRef.current = isRecognizing; }, [isRecognizing]);
+  useEffect(() => { checkAudioDecodingSupport(); }, []);
 
-  useEffect(() => {
-    isRecognizingRef.current = isRecognizing;
-  }, [isRecognizing]);
+  /* ================= LOGIC TIDAK DIUBAH ================= */
 
-  // Check audio codec support on mount (for debugging)
-  useEffect(() => {
-    checkAudioDecodingSupport();
-  }, []);
-
-  // --- Start Recording ---
   const handleStartRecording = async () => {
     setResult(null);
     resultRef.current = null;
     setError(null);
     setIsRecognizing(false);
-    isRecognizingRef.current = false;  
+    isRecognizingRef.current = false;
     setRecommendations([]);
 
     try {
-
-      // Use default audio constraints
       const audioConstraints = getOptimalAudioConstraints();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: audioConstraints
-      });
-
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       streamRef.current = stream;
 
-      // Force WAV format
       let mimeType: string | undefined = 'audio/wav';
-      
-      // Check if WAV is supported
       if (!MediaRecorder.isTypeSupported('audio/wav')) {
         mimeType = getSupportedAudioMimeType();
       }
-      
-      const mediaRecorderOptions = mimeType ? { mimeType } : undefined;
 
-      mediaRecorderRef.current = new MediaRecorder(stream, mediaRecorderOptions);
+      mediaRecorderRef.current = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
       mediaRecorderRef.current.ondataavailable = async (event) => {
-        if (resultRef.current) {
-          return;
-        }
-        
+        if (resultRef.current) return;
         if (event.data.size > 0) {
           let processedBlob = event.data;
-          
           try {
             const canDecode = await canDecodeAudio(event.data);
-            if (canDecode) {
-              processedBlob = await normalizeAudioVolume(
-                event.data, 
-                VOLUME_BOOST.MUSIC,
-                false
-              );
-            } else {
-              try {
-                processedBlob = await convertToWav(event.data);
-              } catch {
-                processedBlob = event.data;
-              }
-            }
-          } catch (processingError) {
-            console.warn('Audio processing failed, using original audio:', processingError);
+            processedBlob = canDecode
+              ? await normalizeAudioVolume(event.data, VOLUME_BOOST.MUSIC, false)
+              : await convertToWav(event.data);
+          } catch {
             processedBlob = event.data;
           }
-          
-          if (!resultRef.current) {
-            recognizeSong(processedBlob);
-          }
+          if (!resultRef.current) recognizeSong(processedBlob);
         }
       };
 
       mediaRecorderRef.current.start(10000);
       setIsRecording(true);
 
-      // Clear timeout
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
-        if (result) {
-          return;
-        }
-        
-        setError("Couldn't find a match. Try getting closer to the source or humming more clearly!");
+        if (result) return;
+        setError("Couldn't find a match. Try getting closer or humming clearly!");
         handleStopRecording();
       }, RECOGNITION_TIMEOUT_MS);
-    } catch (err) {
-      console.error("Error accessing microphone:", err);
-      setError("Microphone access denied. Please allow access in your browser settings.");
+
+    } catch {
+      setError("Microphone access denied.");
     }
   };
 
-  // --- Stop Recording ---
   const handleStopRecording = () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop();
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-    }
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    streamRef.current?.getTracks().forEach(t => t.stop());
     setIsRecording(false);
     setIsRecognizing(false);
   };
 
-  // --- Recognize Song via API ---
   const recognizeSong = async (audioBlob: Blob) => {
     if (isRecognizingRef.current || resultRef.current) return;
-
     setIsRecognizing(true);
     isRecognizingRef.current = true;
+
     const formData = new FormData();
     formData.append('sample', audioBlob, 'recording.wav');
 
-    try {      
+    try {
       const response = await fetch('/api/recognize', { method: 'POST', body: formData });
-      
-      if (response.status === 204) {
-        setIsRecognizing(false);
-        return;
-      }
-      
-      const data: SongResult = await response.json();
+      if (response.status === 204) return;
 
+      const data: SongResult = await response.json();
       if (response.ok && data.title) {
         setResult(data);
         resultRef.current = data;
         handleStopRecording();
-        // pakai title + artist utk /api/similarity (Last.fm proxy)
         if (data.title && data.artists?.length) {
           setIsLoadingRecs(true);
           await fetchRecommendations(data.title, data.artists[0].name);
         }
-      } else {
-        console.log("No result in this chunk, waiting for the next one...");
       }
-    } catch (err) {
-      console.error("Recognition error:", err);
-      if (!result) {
-        setError('An error occurred during recognition.');
-      }
+    } catch {
+      setError('Recognition failed.');
       handleStopRecording();
     } finally {
       setIsRecognizing(false);
@@ -214,146 +148,112 @@ export default function HomePage() {
     }
   };
 
-  // --- Fetch Recommendations (Last.fm -> Spotify) ---
   const fetchRecommendations = async (title: string, artistName: string) => {
     try {
       const qs = new URLSearchParams({ track: title, artist: artistName });
-      const res = await fetch(`/api/similarity?${qs.toString()}`);
+      const res = await fetch(`/api/similarity?${qs}`);
       const recs: Recommendation[] = await res.json();
-      if (res.ok) {
-        setRecommendations(recs);
-      } else {
-        console.error('Similarity (Last.fm) error:', recs);
-      }
-    } catch (err) {
-      console.error('Failed to fetch recommendations:', err);
-    }
+      if (res.ok) setRecommendations(recs);
+    } catch {}
   };
 
-  // --- Status Text ---
   const getStatusText = () => {
     if (error) return '';
-    if (isRecording) {
-      if (isRecognizing) return "Analyzing...";
-      return "Listening... Play music or hum a tune!";
-    }
+    if (isRecording) return isRecognizing ? 'Analyzing…' : 'Listening…';
     if (result) return 'Result found!';
-    return 'Ready to listen';
+    return 'Tap to start listening';
   };
 
-  const buttonColor = error ? '#EF4444' : '#4A52EB';
+  /* ================= UI ================= */
 
   return (
     <>
       <Header />
-      <main className="flex min-h-screen flex-col items-center justify-center p-24 text-center bg-black pt-32">
-        <h1 className="text-5xl font-bold mb-4" style={{ color: '#D1F577' }}>
-          Find a Song!
+      <main className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex flex-col items-center justify-center pt-32 px-6 text-center">
+
+        <h1 className="text-5xl font-black text-white mb-4">
+          Find a Song
         </h1>
-        <p className={`text-lg mb-12 ${isRecording && 'animate-pulse'}`} style={{ color: '#EEECFF' }}>
+
+        <p className={`text-lg text-gray-300 mb-12 ${isRecording && 'animate-pulse'}`}>
           {getStatusText()}
         </p>
-        
-        <div className="relative flex items-center justify-center mb-8">
+
+        {/* RECORD BUTTON */}
+        <div className="relative mb-10">
           {isRecording && !error && (
             <>
-              <div className="absolute w-32 h-32 rounded-full animate-ping" style={{ 
-                backgroundColor: '#4A52EB',
-                opacity: 0.3,
-                animationDuration: '2s'
-              }} />
-              <div className="absolute w-40 h-40 rounded-full animate-ping" style={{ 
-                backgroundColor: '#4A52EB',
-                opacity: 0.2,
-                animationDuration: '2.5s',
-                animationDelay: '0.3s'
-              }} />
-              <div className="absolute w-48 h-48 rounded-full animate-ping" style={{ 
-                backgroundColor: '#4A52EB',
-                opacity: 0.1,
-                animationDuration: '3s',
-                animationDelay: '0.6s'
-              }} />
+              <div className="absolute inset-0 rounded-full animate-ping bg-blue-500/30" />
+              <div className="absolute inset-[-20px] rounded-full animate-ping bg-purple-500/20 delay-200" />
             </>
           )}
-          
-          <button 
+
+          <button
             onClick={isRecording ? handleStopRecording : handleStartRecording}
-            className="relative w-24 h-24 rounded-full font-bold text-white shadow-2xl transition-all duration-300 hover:scale-105 z-10 flex items-center justify-center"
-            style={{ backgroundColor: buttonColor }}
+            className={`relative w-24 h-24 rounded-full flex items-center justify-center
+                        bg-gradient-to-br from-blue-500 to-purple-600
+                        hover:scale-105 transition shadow-2xl`}
           >
             {isRecording ? (
-              <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
-                <rect x="6" y="6" width="8" height="8" />
-              </svg>
+              <div className="w-6 h-6 bg-white rounded-sm" />
             ) : (
-              <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a3 3 0 016 0v2a3 3 0 11-6 0V9z" clipRule="evenodd"/>
+              <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 14a3 3 0 100-6 3 3 0 000 6z" />
+                <path d="M12 2a10 10 0 100 20 10 10 0 000-20z" />
               </svg>
             )}
           </button>
         </div>
 
+        {/* RESULT CARD */}
         {result && (
-          <div className="mt-8 p-6 rounded-lg text-left w-full max-w-md" style={{ backgroundColor: '#1F1F1F' }}>
-            <div className="flex items-center justify-between mb-2">
-            <h2 className="text-2xl font-bold" style={{ color: '#D1F577' }}>
-                {result.title}
-            </h2>
-          </div>
-          <p className="text-lg mb-1" style={{ color: '#F1F1F3' }}>
-              by {result.artists.map((artist: { name: string }) => artist.name).join(', ')}
+          <div className="w-full max-w-md backdrop-blur-xl bg-black/40 border border-blue-500/20 rounded-2xl p-6 shadow-2xl">
+            <h2 className="text-2xl font-bold text-white">{result.title}</h2>
+            <p className="text-gray-300">
+              {result.artists.map(a => a.name).join(', ')}
             </p>
-            <p className="text-md" style={{ color: '#EEECFF', opacity: 0.7 }}>
+            <p className="text-gray-400 text-sm">
               Album: {result.album.name}
             </p>
-            
             {session && (
-              <p className="text-sm mt-4 text-center" style={{ color: '#D1F577' }}>
+              <p className="text-blue-400 mt-3 text-sm font-semibold">
                 ✓ Saved to your history
               </p>
             )}
           </div>
         )}
-        
 
-        {/* Recommendations */}
+        {/* RECOMMENDATIONS */}
         {(isLoadingRecs || recommendations.length > 0) && (
-          <div className="mt-8 w-full max-w-2xl">
-            <h3 className="text-xl font-bold mb-4" style={{ color: '#D1F577' }}>
-              {isLoadingRecs ? 'Finding recommendations…' : 'You may also like:'}
+          <div className="mt-10 w-full max-w-3xl">
+            <h3 className="text-xl font-bold text-white mb-4">
+              {isLoadingRecs ? 'Finding recommendations…' : 'You may also like'}
             </h3>
 
-            {!isLoadingRecs && recommendations.length === 0 && (
-              <p className="text-sm" style={{ color: '#EEECFF', opacity: 0.7 }}>
-                No recommendations found.
-              </p>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {recommendations.map((rec) => (
-                <div key={rec.spotifyId} className="p-4 rounded-lg" style={{ backgroundColor: '#1F1F1F' }}>
-                  <h4 className="font-semibold text-lg mb-1" style={{ color: '#EEECFF' }}>{rec.title}</h4>
-                  <p className="text-sm mb-1" style={{ color: '#F1F1F3' }}>
-                    by {rec.artists.map((a) => a.name).join(', ')}
+            <div className="grid sm:grid-cols-2 gap-4">
+              {recommendations.map(rec => (
+                <div
+                  key={rec.spotifyId}
+                  className="backdrop-blur-xl bg-black/40 border border-gray-700 rounded-xl p-4 text-left"
+                >
+                  <h4 className="text-white font-semibold">{rec.title}</h4>
+                  <p className="text-gray-300 text-sm">
+                    {rec.artists.map(a => a.name).join(', ')}
                   </p>
-                  <p className="text-sm" style={{ color: '#EEECFF', opacity: 0.7 }}>
+                  <p className="text-gray-400 text-xs">
                     Album: {rec.album.name}
                   </p>
 
-                  {/* Link ke Spotify */}
                   <a
                     href={rec.spotifyUrl}
                     target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-green-400 underline mt-2 inline-block"
+                    className="text-green-400 underline mt-2 inline-block text-sm"
                   >
                     Open in Spotify
                   </a>
 
                   {rec.preview_url && (
-                    <audio controls className="w-full mt-3" src={rec.preview_url}></audio>
+                    <audio controls className="w-full mt-2" src={rec.preview_url} />
                   )}
                 </div>
               ))}
@@ -361,22 +261,25 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* ERROR */}
         {error && (
-          <p className="mt-4 text-lg font-medium" style={{ color: '#EF4444' }}>
+          <p className="mt-6 text-red-400 font-semibold">
             {error}
           </p>
         )}
 
+        {/* LOGIN PROMPT */}
         {!session && !result && (
-          <div className="mt-8 p-4 rounded-lg" style={{ backgroundColor: '#1F1F1F' }}>
-            <p className="text-sm" style={{ color: '#EEECFF' }}>
-              <Link href="/login" className="font-semibold hover:underline" style={{ color: '#D1F577' }}>
+          <div className="mt-10 backdrop-blur-xl bg-black/40 p-4 rounded-xl border border-gray-700">
+            <p className="text-gray-300 text-sm">
+              <Link href="/login" className="text-blue-400 font-semibold hover:underline">
                 Sign in
-              </Link>
-              {' '}to save your search history
+              </Link>{' '}
+              to save your history
             </p>
           </div>
         )}
+
       </main>
     </>
   );

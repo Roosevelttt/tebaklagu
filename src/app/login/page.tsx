@@ -47,28 +47,40 @@ function LoginForm() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-6 bg-black">
+    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center p-6">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-2" style={{ color: '#D1F577' }}>
+        {/* Shazam-style Header */}
+        <div className="text-center mb-12">
+          <div className="mb-4">
+            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl">
+              <svg className="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+            </div>
+          </div>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight mb-2 text-white">
             Welcome Back
           </h1>
-          <p className="text-lg" style={{ color: '#EEECFF' }}>
-            Sign in
+          <p className="text-lg text-gray-300 font-medium">
+            Sign in to continue
           </p>
         </div>
 
-        <div className="p-8 rounded-lg" style={{ backgroundColor: '#1F1F1F' }}>
+        {/* Main Card with Shazam-style */}
+        <div className="backdrop-blur-xl bg-black/40 rounded-2xl p-8 shadow-2xl border border-blue-500/20
+                       hover:bg-black/50 transition-all duration-300">
           {error && (
-            <div className="mb-4 p-3 rounded" style={{ backgroundColor: '#EF4444', color: 'white' }}>
-              {error}
+            <div className="mb-6 p-4 rounded-xl backdrop-blur-sm bg-blue-500/10 border border-blue-500/30">
+              <p className="text-center text-blue-400 text-sm font-medium">
+                {error}
+              </p>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium mb-2" style={{ color: '#EEECFF' }}>
-                Email
+              <label htmlFor="email" className="block text-sm font-semibold mb-3 text-gray-200">
+                Email Address
               </label>
               <input
                 id="email"
@@ -76,14 +88,15 @@ function LoginForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-4 py-2 rounded bg-black border text-white focus:outline-none focus:ring-2"
-                style={{ borderColor: '#4A52EB', color: '#EEECFF' }}
+                className="w-full px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-600 text-white placeholder-gray-400
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                         transition-all duration-200 backdrop-blur-sm"
                 placeholder="you@example.com"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium mb-2" style={{ color: '#EEECFF' }}>
+              <label htmlFor="password" className="block text-sm font-semibold mb-3 text-gray-200">
                 Password
               </label>
               <input
@@ -92,8 +105,9 @@ function LoginForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-4 py-2 rounded bg-black border text-white focus:outline-none focus:ring-2"
-                style={{ borderColor: '#4A52EB', color: '#EEECFF' }}
+                className="w-full px-4 py-3 rounded-xl bg-gray-800/50 border border-gray-600 text-white placeholder-gray-400
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                         transition-all duration-200 backdrop-blur-sm"
                 placeholder="••••••••"
               />
             </div>
@@ -101,24 +115,36 @@ function LoginForm() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 rounded font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: '#4A52EB' }}
+              className="w-full py-3 rounded-xl font-bold text-white transition-all duration-300
+                        bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700
+                        hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] focus:outline-none focus:ring-4 focus:ring-blue-500/50
+                        disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02] shadow-lg"
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isLoading ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span>Signing in...</span>
+                </div>
+              ) : (
+                'Sign In'
+              )}
             </button>
           </form>
 
-          <div className="my-6 flex items-center">
-            <div className="flex-1 border-t" style={{ borderColor: '#4A52EB' }}></div>
-            <span className="px-4 text-sm" style={{ color: '#EEECFF' }}>OR</span>
-            <div className="flex-1 border-t" style={{ borderColor: '#4A52EB' }}></div>
+          <div className="my-8 flex items-center">
+            <div className="flex-1 border-t border-gray-600"></div>
+            <span className="px-4 text-sm text-gray-400 font-medium">OR</span>
+            <div className="flex-1 border-t border-gray-600"></div>
           </div>
 
           <button
             onClick={handleGoogleSignIn}
             disabled={isLoading}
-            className="w-full py-3 rounded font-semibold transition-all hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-3"
-            style={{ backgroundColor: 'white', color: '#1F1F1F' }}
+            className="w-full py-3 rounded-xl font-semibold transition-all duration-300
+                     bg-gray-800 text-gray-200 hover:bg-gray-700 hover:shadow-lg
+                     focus:outline-none focus:ring-4 focus:ring-gray-600/50
+                     disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02]
+                     flex items-center justify-center gap-3 border border-gray-600"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path
@@ -141,21 +167,21 @@ function LoginForm() {
             Continue with Google
           </button>
 
-          <p className="mt-6 text-center text-sm" style={{ color: '#EEECFF' }}>
+          <p className="mt-8 text-center text-sm text-gray-400">
             Don&apos;t have an account?{' '}
-            <Link href="/register" className="font-semibold hover:underline" style={{ color: '#D1F577' }}>
+            <Link href="/register" className="font-semibold text-blue-400 hover:text-blue-300 transition-colors">
               Sign up
             </Link>
           </p>
         </div>
 
-        <div className="mt-6 text-center">
-          <Link href="/" className="text-sm hover:underline" style={{ color: '#EEECFF' }}>
+        <div className="mt-8 text-center">
+          <Link href="/" className="text-sm text-gray-400 hover:text-gray-300 transition-colors hover:underline">
             ← Back to Home
           </Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 
