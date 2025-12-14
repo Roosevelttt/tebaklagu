@@ -15,55 +15,69 @@ export default function Header() {
 
   return (
     <header
-      className="fixed top-0 left-0 right-0 z-50 bg-black"
-      style={{ borderColor: '#5003FF' }}
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
-        <div className="flex justify-between items-center h-16">
+      className="fixed top-0 left-0 right-0 z-50
+             bg-black/40 backdrop-blur-xl
+             border-b"
+      style={{
+        borderImage: 'linear-gradient(to right, #3B82F6, #8B5CF6) 1',
+  }}
 
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-4">
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex h-16 items-center justify-between">
+
+          {/* LOGO */}
+          <Link href="/" className="flex items-center gap-3">
             <Image
               src="/svg/tebaklagu-default.svg"
               alt="TebakLagu Logo"
-              width={24}
-              height={24}
+              width={26}
+              height={26}
               priority
             />
 
-            <span className="text-2xl font-germagont font-regular">
-              <span style={{ color: "#fff1ff" }}>tebak</span>
-              <span style={{ color: "#D1F577" }}>lagu</span>
+            <span className="text-2xl font-germagont leading-none">
+              <span className="text-white">tebak</span>
+              <span className="text-lime-400">lagu</span>
             </span>
           </Link>
 
-          {/* Navigation */}
+          {/* NAV */}
           <nav className="flex items-center gap-2">
             {status === 'loading' ? (
               <div
                 className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
                 style={{ borderColor: '#4A52EB' }}
-              ></div>
+              />
             ) : session ? (
               <>
                 <Link
                   href="/history"
-                  className="px-4 py-2 rounded font-medium transition-all hover:opacity-80"
-                  style={{ color: '#EEECFF' }}
+                  className="
+                    px-4 py-2 rounded-md text-sm font-medium
+                    text-gray-200 hover:text-white
+                    hover:bg-white/5 transition
+                  "
                 >
                   History
                 </Link>
 
-                {/* User dropdown */}
+                {/* USER DROPDOWN */}
                 <div className="relative">
                   <button
                     onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    className="flex items-center gap-2 px-2 py-2 rounded-full transition-all hover:opacity-80"
-                    style={{ backgroundColor: '#1F1F1F', color: '#EEECFF' }}
+                    className="
+                      flex items-center justify-center w-10 h-10
+                      rounded-full transition hover:opacity-90
+                      bg-black/40
+                    "
                   >
                     <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center font-semibold"
-                      style={{ backgroundColor: '#4A52EB', color: 'white' }}
+                      className="
+                        w-8 h-8 rounded-full flex items-center justify-center
+                        font-semibold text-sm text-white
+                        bg-gradient-to-br from-blue-500 to-purple-600
+                      "
                     >
                       {session.user?.name?.charAt(0).toUpperCase() ||
                         session.user?.email?.charAt(0).toUpperCase()}
@@ -72,31 +86,28 @@ export default function Header() {
 
                   {isDropdownOpen && (
                     <div
-                      className="absolute right-0 mt-2 w-48 rounded-lg shadow-lg overflow-hidden"
-                      style={{ backgroundColor: '#1F1F1F' }}
+                      className="
+                        absolute right-0 mt-3 w-52 rounded-xl
+                        shadow-2xl overflow-hidden
+                        bg-gradient-to-br from-black via-[#1A0033] to-black
+                        border border-white/10
+                      "
                     >
-                      <div
-                        className="px-4 py-3 border-b"
-                        style={{ borderColor: '#4A52EB' }}
-                      >
-                        <p
-                          className="text-sm font-medium"
-                          style={{ color: '#EEECFF' }}
-                        >
+                      <div className="px-4 py-3">
+                        <p className="text-sm font-medium text-white">
                           {session.user?.name}
                         </p>
-                        <p
-                          className="text-xs truncate"
-                          style={{ color: '#EEECFF', opacity: 0.7 }}
-                        >
+                        <p className="text-xs text-white/60 truncate">
                           {session.user?.email}
                         </p>
                       </div>
 
                       <button
                         onClick={handleSignOut}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-black transition-colors"
-                        style={{ color: '#EF4444' }}
+                        className="
+                          w-full px-4 py-3 text-left text-sm
+                          text-red-400 hover:bg-white/5 transition
+                        "
                       >
                         Sign out
                       </button>
@@ -108,16 +119,22 @@ export default function Header() {
               <>
                 <Link
                   href="/login"
-                  className="px-4 py-2 rounded font-medium transition-all hover:opacity-80"
-                  style={{ color: '#EEECFF' }}
+                  className="
+                    px-4 py-2 rounded-md text-sm font-medium
+                    text-gray-200 hover:text-white
+                    hover:bg-white/5 transition
+                  "
                 >
                   Sign in
                 </Link>
 
                 <Link
                   href="/register"
-                  className="px-4 py-2 rounded font-semibold text-white transition-all hover:opacity-90"
-                  style={{ backgroundColor: '#4A52EB' }}
+                  className="
+                    px-4 py-2 rounded-md text-sm font-semibold text-white
+                    bg-gradient-to-r from-blue-500 to-purple-600
+                    hover:opacity-90 transition
+                  "
                 >
                   Sign up
                 </Link>
