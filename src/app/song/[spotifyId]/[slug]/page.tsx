@@ -71,18 +71,17 @@ function SongResultCard({ track }: { track: SpotifyTrack }) {
           <p className="text-xl mb-1 text-white">by {track.artists.map((a) => a.name).join(', ')}</p>
           <p className="text-md mb-4 text-gray-400">Album: {track.album.name}</p>
           
-          {/* AUDIO PLAYER DIHAPUS DISINI */}
-          
-          {track.external_urls.spotify && (
-            <a
-              href={track.external_urls.spotify}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block px-6 py-2 rounded-full font-bold text-black transition hover:scale-105 mt-2"
-              style={{ backgroundColor: '#1DB954' }} // Spotify Green
-            >
-              Play on Spotify
-            </a>
+          {/* Spotify preview embed */}
+          {track.id && (
+            <iframe
+              src={`https://open.spotify.com/embed/track/${track.id}`}
+              className="w-full mt-4 rounded-lg"
+              width="100%"
+              height="152"
+              frameBorder="0"
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+            />
           )}
         </div>
       </div>
