@@ -112,10 +112,10 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
       {/* STATS */}
       <div className="text-xs text-gray-400 mb-3 flex flex-wrap gap-x-4 gap-y-1 items-center">
         <span>
-          Kesamaan <span className="text-white font-medium">{rec.similarity?.toFixed(1)}%</span>
+          Similarity <span className="text-white font-medium">{rec.similarity?.toFixed(1)}%</span>
         </span>
         <span>
-          Didengar <span className="text-white font-medium">{rec.playcount ? formatter.format(rec.playcount) : 0}x</span>
+          Plays <span className="text-white font-medium">{rec.playcount ? formatter.format(rec.playcount) : 0}x</span>
         </span>
         {rec.tagOverlap !== undefined && (
           <span>
@@ -152,7 +152,7 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
           <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
             <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.48.66.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141 4.32-1.32 9.84-.66 13.561 1.621.42.3.54.84.18 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.299z"/>
           </svg>
-          Buka di Spotify
+          Open in Spotify
         </a>
         
         {/* AUDIO PLAYER DI KANAN DIHAPUS */}
@@ -310,10 +310,10 @@ export default function SongPage() {
                 <div className="lg:col-span-2 order-2 lg:order-1">
                   <div className="flex justify-between items-baseline mb-4">
                     <h3 className="text-2xl font-bold" style={{ color: '#D1F577' }}>
-                      Rekomendasi
+                      Recommendation
                     </h3>
                     <span className="text-sm text-gray-400">
-                      {filteredRecommendations.length} dari {songData.recommendations.length} lagu
+                      {filteredRecommendations.length} from {songData.recommendations.length} song
                     </span>
                   </div>
 
@@ -325,7 +325,7 @@ export default function SongPage() {
                     </div>
                   ) : (
                     <div className="p-8 rounded-lg bg-[#1F1F1F] text-center text-gray-400 border border-[#333]">
-                      Tidak ada lagu yang cocok. <br/>
+                      No matching songs. <br/>
                       <button onClick={resetFilters} className="text-[#D1F577] underline mt-2">Reset Filter</button>
                     </div>
                   )}
@@ -337,15 +337,15 @@ export default function SongPage() {
                     <h3 className="text-xl font-bold mb-6 text-white border-b border-gray-700 pb-2">Filter & Sort</h3>
                     
                     <div className="mb-6">
-                      <label className="block text-sm text-gray-400 mb-2">Sortir berdasarkan</label>
+                      <label className="block text-sm text-gray-400 mb-2">Sort by</label>
                       <select 
                         value={sortBy}
                         onChange={handleSortChange}
                         className="w-full bg-black text-white p-2 rounded border border-gray-700 focus:border-[#D1F577] outline-none"
                       >
                         <option value="vibe">Vibe Score (Best Match)</option>
-                        <option value="similarity">Kemiripan (%)</option>
-                        <option value="playcount">Popularitas</option>
+                        <option value="similarity">Similarity (%)</option>
+                        <option value="playcount">Popularity</option>
                       </select>
                     </div>
 
@@ -403,7 +403,7 @@ export default function SongPage() {
                       onClick={resetFilters}
                       className="w-full py-2 rounded border border-gray-600 text-gray-300 hover:bg-gray-800 transition font-medium"
                     >
-                      Reset Filter
+                      Reset filters
                     </button>
                   </div>
                 </div>
