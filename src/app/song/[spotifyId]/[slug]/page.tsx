@@ -156,7 +156,7 @@ function SongResultCard({ track }: { track: SpotifyTrack }) {
   const image = track.album?.images?.[0];
 
   return (
-    <div className="p-6 rounded-lg text-left w-full shadow-xl mb-8 border border-[#333]" style={{ backgroundColor: '#1F1F1F' }}>
+    <div className="p-6 rounded-xl text-left w-full shadow-2xl mb-8 border border-gray-700 backdrop-blur-xl bg-black/40">
       <div className="flex flex-col md:flex-row gap-6 items-center md:items-start">
         <div className="flex-1 w-full text-center md:text-left">
           <h2 className="text-3xl font-bold mb-2" style={{ color: '#D1F577' }}>{track.name}</h2>
@@ -185,7 +185,7 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
   const formatter = new Intl.NumberFormat('id-ID');
 
   return (
-    <div className="p-5 rounded-lg mb-4 transition hover:bg-[#252525] border border-[#333] bg-[#1F1F1F]">
+    <div className="p-5 rounded-xl mb-4 transition hover:bg-[#252525] border border-gray-700 bg-black/30 backdrop-blur-xl">
       
       {/* HEADER */}
       <div className="flex justify-between items-start mb-1">
@@ -382,7 +382,7 @@ export default function SongPage() {
 
       <Header />
       
-      <main className="min-h-screen bg-black pt-28 pb-12 px-4 sm:px-8">
+      <main className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black pt-28 pb-12 px-4 sm:px-8">
         <div className="max-w-6xl mx-auto">
           
           {isLoading && <p className="text-center text-[#EEECFF] mt-10">Loading analysis...</p>}
