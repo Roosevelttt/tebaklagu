@@ -283,26 +283,30 @@ export default function HomePage() {
         </p>
 
         {/* RECORD BUTTON */}
-        <div className="relative mb-6">
+        {/* RECORD BUTTON */}
+        <div className="relative w-24 h-24 mb-6">
+          {/* Ping overlay */}
           {isRecording && (
             <>
               <div className="absolute inset-0 rounded-full animate-ping bg-blue-500/30" />
-              <div className="absolute inset-[-20px] rounded-full animate-ping bg-purple-500/20 delay-200" />
+              <div className="absolute inset-0 rounded-full animate-ping bg-purple-500/20 delay-200" />
             </>
           )}
 
+          {/* Canvas visualizer */}
           {isRecording && (
             <canvas
               ref={canvasRef}
               width={VISUALIZER_CANVAS_SIZE}
               height={VISUALIZER_CANVAS_SIZE}
-              className="absolute inset-0"
+              className="absolute top-0 left-0 w-full h-full rounded-full pointer-events-none"
             />
           )}
 
+          {/* Mic button */}
           <button
             onClick={isRecording ? handleStopRecording : handleStartRecording}
-            className="relative w-24 h-24 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl hover:scale-105 transition"
+            className="relative w-full h-full rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-2xl hover:scale-105 transition"
             disabled={isRecognizing}
           >
             {isRecording ? (
